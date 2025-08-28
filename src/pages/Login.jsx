@@ -1,131 +1,68 @@
+// src/pages/Login.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import BackgroundDocs from "../components/BackgroundDocs";
 
 export default function Login() {
+  const nav = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [msg, setMsg] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [offerOtpFallback, setOfferOtpFallback] = useState(false);
-  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
 
   async function onSubmit(e) {
     e.preventDefault();
-    setMsg("");
-    setOfferOtpFallback(false);
-    setLoading(true);
-
+    setErr("");
+    setBusy(true);
     try {
-      const { error: pwErr } = await supabase.auth.signInWithPassword({ email, password });
-      if (pwErr) {
-        setMsg(pwErr.message || "Login failed");
-        if (/invalid login credentials/i.test(pwErr.message || "")) {
-          setOfferOtpFallback(true);
-        }
-        return;
-      }
-      await supabase.auth.signOut(); // enforce 2nd factor
-
-      const { error: otpErr } = await supabase.auth.signInWithOtp({
-        email,
-        options: { shouldCreateUser: false },
-      });
-      if (otpErr) throw otpErr;
-
-      localStorage.setItem("pendingEmail", email);
-      navigate(`/verify?email=${encodeURIComponent(email)}&mode=login2fa`);
-    } catch (err) {
-      setMsg(err.message || "Login failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loginWithCodeOnly() {
-    setMsg("");
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { shouldCreateUser: false },
-      });
+      // 2FA-ish: require password + email OTP
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      localStorage.setItem("pendingEmail", email);
-      navigate(`/verify?email=${encodeURIComponent(email)}&mode=login2fa`);
-    } catch (err) {
-      setMsg(err.message || "Could not send code");
-    } finally {
-      setLoading(false);
-    }
-  }
 
-  async function handleResetPassword() {
-    setMsg("");
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset`,
+      // Ask Supabase to send the email OTP
+      const { error: resendErr } = await supabase.auth.resend({
+        type: "email", // login OTP type
+        email,
       });
-      if (error) throw error;
-      setMsg("Password reset link sent. Check your email.");
-    } catch (err) {
-      setMsg(err.message || "Could not send reset link");
+      if (resendErr) throw resendErr;
+
+      sessionStorage.setItem("amd-verify-email", email);
+      nav("/verify?mode=login"); // IMPORTANT: login mode
+    } catch (ex) {
+      setErr(ex.message || "Invalid credentials");
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }
 
   return (
-    <main className="min-h-screen grid place-items-center px-6">
-      <BackgroundDocs />
-      <form onSubmit={onSubmit} className="w-full max-w-md rounded-2xl border border-neutral-200/70 bg-white/80 backdrop-blur p-6 shadow space-y-4">
-        <h1 className="text-2xl font-semibold">Log in</h1>
-
+    <main className="mx-auto max-w-md px-6 py-10">
+      <h1 className="text-3xl font-bold mb-6">Log in</h1>
+      {err && <div className="mb-4 text-red-600">{err}</div>}
+      <form onSubmit={onSubmit} className="space-y-4">
         <input
           type="email"
-          placeholder="you@example.com"
-          className="w-full rounded-xl border border-neutral-300/80 px-3.5 py-2.5 bg-white/90"
-          value={email}
-          onChange={(e) => setEmail(e.target.value.trim())}
           required
+          value={email}
+          onChange={(e)=>setEmail(e.target.value)}
+          placeholder="you@example.com"
+          className="w-full border rounded px-3 py-2"
         />
-
         <input
           type="password"
-          placeholder="Your password"
-          className="w-full rounded-xl border border-neutral-300/80 px-3.5 py-2.5 bg-white/90"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
           required
+          value={password}
+          onChange={(e)=>setPassword(e.target.value)}
+          placeholder="Password"
+          className="w-full border rounded px-3 py-2"
         />
-
         <button
           type="submit"
-          disabled={loading}
-          className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-white font-medium hover:bg-blue-700 transition disabled:opacity-50"
+          disabled={busy}
+          className="w-full bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700"
         >
-          {loading ? "Checking…" : "Continue"}
+          {busy ? "Checking…" : "Continue"}
         </button>
-
-        {msg && <p className="text-sm text-red-600">{msg}</p>}
-
-        <div className="flex items-center justify-between text-sm">
-          <button type="button" onClick={handleResetPassword} className="text-blue-600 hover:underline">
-            Forgot password?
-          </button>
-          {offerOtpFallback && (
-            <button type="button" onClick={loginWithCodeOnly} className="text-blue-600 hover:underline">
-              Send me a login code instead
-            </button>
-          )}
-        </div>
-
-        <div className="text-sm">
-          New here?{" "}
-          <a href="/register" className="text-blue-600 hover:underline">Create an account</a>
-        </div>
       </form>
     </main>
   );

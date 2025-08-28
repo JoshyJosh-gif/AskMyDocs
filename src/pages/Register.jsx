@@ -1,92 +1,72 @@
+// src/pages/Register.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import BackgroundDocs from "../components/BackgroundDocs";
 
 export default function Register() {
+  const nav = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [msg, setMsg] = useState("");
-  const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
 
   async function onSubmit(e) {
     e.preventDefault();
-    setMsg("");
-    if (password !== confirm) {
-      setMsg("Passwords do not match");
-      return;
-    }
-    setLoading(true);
-
+    setErr("");
+    setBusy(true);
     try {
-      const { error: upErr } = await supabase.auth.signUp({ email, password });
-      if (upErr) throw upErr;
-
-      const { error: otpErr } = await supabase.auth.signInWithOtp({
+      const { error } = await supabase.auth.signUp({
         email,
-        options: { shouldCreateUser: false },
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
       });
-      if (otpErr) throw otpErr;
+      if (error) throw error;
 
-      localStorage.setItem("pendingEmail", email);
-      navigate(`/verify?email=${encodeURIComponent(email)}&mode=signup2fa`);
-    } catch (err) {
-      setMsg(err.message || "Registration failed");
+      // Remember email for Verify page (we removed the email input there)
+      sessionStorage.setItem("amd-verify-email", email);
+      nav("/verify?mode=signup"); // IMPORTANT: signup mode
+    } catch (ex) {
+      setErr(ex.message || "Registration failed");
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }
 
   return (
-    <main className="min-h-screen grid place-items-center px-6">
-      <BackgroundDocs />
-      <form onSubmit={onSubmit} className="w-full max-w-md rounded-2xl border border-neutral-200/70 bg-white/80 backdrop-blur p-6 shadow space-y-4">
-        <h1 className="text-2xl font-semibold">Register</h1>
-
+    <main className="mx-auto max-w-md px-6 py-10">
+      <h1 className="text-3xl font-bold mb-6">Create your account</h1>
+      {err && <div className="mb-4 text-red-600">{err}</div>}
+      <form onSubmit={onSubmit} className="space-y-4">
         <input
           type="email"
-          placeholder="you@example.com"
-          className="w-full rounded-xl border border-neutral-300/80 px-3.5 py-2.5 bg-white/90"
+          required
           value={email}
-          onChange={(e) => setEmail(e.target.value.trim())}
-          required
+          onChange={(e)=>setEmail(e.target.value)}
+          placeholder="you@example.com"
+          className="w-full border rounded px-3 py-2"
         />
-
         <input
           type="password"
-          placeholder="Create a password"
-          className="w-full rounded-xl border border-neutral-300/80 px-3.5 py-2.5 bg-white/90"
+          required
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
+          onChange={(e)=>setPassword(e.target.value)}
+          placeholder="Password"
+          className="w-full border rounded px-3 py-2"
         />
-
-        <input
-          type="password"
-          placeholder="Confirm password"
-          className="w-full rounded-xl border border-neutral-300/80 px-3.5 py-2.5 bg-white/90"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-          required
-        />
-
         <button
           type="submit"
-          disabled={loading}
-          className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-white font-medium hover:bg-blue-700 transition disabled:opacity-50"
+          disabled={busy}
+          className="w-full bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700"
         >
-          {loading ? "Creating…" : "Continue"}
+          {busy ? "Creating…" : "Create account"}
         </button>
-
-        {msg && <p className="text-sm text-red-600">{msg}</p>}
-
-        <div className="text-sm">
-          Already have an account?{" "}
-          <a href="/login" className="text-blue-600 hover:underline">Log in</a>
-        </div>
       </form>
+      <p className="text-sm text-gray-500 mt-3">
+        We’ll email you a confirmation link and a 6-digit code. Either works — if you click the link,
+        you won’t need the code.
+      </p>
     </main>
   );
 }
